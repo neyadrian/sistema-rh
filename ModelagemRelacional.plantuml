@@ -1,0 +1,75 @@
+@startuml
+
+hide methods
+hide stereotypes
+
+skinparam linetype ortho
+skinparam entity {
+    BackgroundColor #E8F4FA
+    BorderColor #5B9BD5
+    FontColor #000000
+}
+
+entity "Setor" as setor {
+    * idSetor : INT <<PK>>
+    --
+    codigoSetor : INT
+    nomeSetor : VARCHAR(45)
+}
+
+entity "Servidor" as servidor {
+    * idServidor : INT <<PK>>
+    --
+    nomeServidor : VARCHAR(45)
+    enderecoServidor : VARCHAR(45)
+    telefoneServidor : VARCHAR(45)
+    admissaoServidor : DATE
+    cargoServidor : VARCHAR(45)
+    lotacaoServidor : VARCHAR(45)
+    matriculaServidor : VARCHAR(100)
+    unidadeExercicioServidor : VARCHAR(45)
+    vinculoServidor : VARCHAR(45)
+    situacaoServidor : VARCHAR(45)
+}
+
+entity "Requerimento" as requerimento {
+    * idRequerimento : INT <<PK>>
+    --
+    numeroProtocolo : VARCHAR(45)
+    status : VARCHAR(10)
+    dataAbertura : DATETIME
+    descricao : VARCHAR(45)
+}
+
+entity "Tipo Requerimento" as tipoRequerimento {
+    * idTipoRequerimento : INT <<PK>>
+    --
+    descricao : VARCHAR(45)
+    prazoDiasPadrao : INT
+}
+
+entity "Tramitacao" as tramitacao {
+    * idTramitacao : INT <<PK>>
+    --
+    dataTramitacao : DATETIME
+    despachoEncaminhamento : VARCHAR(45)
+}
+
+entity "Parecer" as parecer {
+    * idParecer : INT <<PK>>
+    --
+    numeroParecer : VARCHAR(45)
+    conteudoParecer : VARCHAR(45)
+    dataEmissao : DATETIME
+    status : VARCHAR(10)
+}
+
+entity "Anexo" as anexo {
+    * idAnexo : INT <<PK>>
+    --
+    nomeArquivo : VARCHAR(45)
+    caminho : VARCHAR(45)
+    dataUpload : DATETIME
+}
+
+@enduml
