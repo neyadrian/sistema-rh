@@ -1,75 +1,153 @@
 @startuml
-
-hide methods
-hide stereotypes
-
+' ==========================================
+' CONFIGURAÇÕES VISUAIS
+' ==========================================
+hide circle
 skinparam linetype ortho
-skinparam entity {
-    BackgroundColor #E8F4FA
-    BorderColor #5B9BD5
-    FontColor #000000
+skinparam roundcorner 5
+skinparam class {
+    BackgroundColor White
+    BorderColor #555555
+    ArrowColor #333333
 }
 
-entity "Setor" as setor {
-    * idSetor : INT <<PK>>
-    --
-    codigoSetor : INT
-    nomeSetor : VARCHAR(45)
+' ==========================================
+' ENTIDADES (TABELAS)
+' ==========================================
+
+entity "tipo_requerimento" {
+  * id_tipo_requerimento : INT <<PK>>
+  --
+  descricao : VARCHAR(45)
+  prazo_dias_padrao : INT
 }
 
-entity "Servidor" as servidor {
-    * idServidor : INT <<PK>>
-    --
-    nomeServidor : VARCHAR(45)
-    enderecoServidor : VARCHAR(45)
-    telefoneServidor : VARCHAR(45)
-    admissaoServidor : DATE
-    cargoServidor : VARCHAR(45)
-    lotacaoServidor : VARCHAR(45)
-    matriculaServidor : VARCHAR(100)
-    unidadeExercicioServidor : VARCHAR(45)
-    vinculoServidor : VARCHAR(45)
-    situacaoServidor : VARCHAR(45)
+entity "setor" {
+  * id_setor : INT <<PK>>
+  --
+  codigo : INT
+  nome : VARCHAR(45)
 }
 
-entity "Requerimento" as requerimento {
-    * idRequerimento : INT <<PK>>
-    --
-    numeroProtocolo : VARCHAR(45)
-    status : VARCHAR(10)
-    dataAbertura : DATETIME
-    descricao : VARCHAR(45)
+entity "servidor" {
+  * id_servidor : INT <<PK>>
+  --
+  nome : VARCHAR(45)
+  endereco : VARCHAR(45)
+  telefone : VARCHAR(45)
+  admissao : DATE
+  cargo : VARCHAR(45)
+  matricula : VARCHAR(100)
+  unidade_exercicio : VARCHAR(45)
+  vinculo : VARCHAR(45)
+  situacao : VARCHAR(45)
+  --
+  id_setor : INT <<FK>>
 }
 
-entity "Tipo Requerimento" as tipoRequerimento {
-    * idTipoRequerimento : INT <<PK>>
-    --
-    descricao : VARCHAR(45)
-    prazoDiasPadrao : INT
+entity "requerimento" {
+  * id_requerimento : INT <<PK>>
+  --
+  numero_protocolo : VARCHAR(45)
+  status : VARCHAR(10)
+  data_abertura : DATETIME
+  descricao : VARCHAR(45)
+  --
+  id_tipo_requerimento : INT <<FK>>
+  id_setor : INT <<FK>>
+  servidor_requerente_id : INT <<FK>>
+  servidor_abertura_id : INT <<FK>>
 }
 
-entity "Tramitacao" as tramitacao {
-    * idTramitacao : INT <<PK>>
-    --
-    dataTramitacao : DATETIME
-    despachoEncaminhamento : VARCHAR(45)
+entity "tramitacao" {
+  * id_tramitacao : INT <<PK>>
+  --
+  data : DATETIME
+  despacho_encaminhamento : VARCHAR(255)
+  --
+  id_requerimento : INT <<FK>>
+  id_servidor : INT <<FK>>
+  setor_origem_id : INT <<FK>>
+  setor_destino_id : INT <<FK>>
 }
 
-entity "Parecer" as parecer {
-    * idParecer : INT <<PK>>
-    --
-    numeroParecer : VARCHAR(45)
-    conteudoParecer : VARCHAR(45)
-    dataEmissao : DATETIME
-    status : VARCHAR(10)
+entity "parecer" {
+  * id_parecer : INT <<PK>>
+  --
+  numero : VARCHAR(45)
+  conteudo : VARCHAR(45)
+  data_emissao : DATETIME
+  status : VARCHAR(10)
+  --
+  id_requerimento : INT <<FK>>
+  id_servidor : INT <<FK>>
 }
 
-entity "Anexo" as anexo {
-    * idAnexo : INT <<PK>>
-    --
-    nomeArquivo : VARCHAR(45)
-    caminho : VARCHAR(45)
-    dataUpload : DATETIME
+entity "anexo" {
+  * id_anexo : INT <<PK>>
+  --
+  nome_arquivo : VARCHAR(255)
+  caminho : VARCHAR(45)
+  data_upload : DATETIME
+  --
+  id_requerimento : INT <<FK>>
+  id_parecer : INT <<FK>>
 }
+
+entity "afastamento" {
+  * id_afastamento : INT <<PK>>
+  --
+  data_inicio : DATETIME
+  quantidade_dias : INT
+  data_fim : DATETIME
+  motivo : VARCHAR(45)
+  status : VARCHAR(45)
+  data_registro : DATETIME
+  --
+  id_servidor : INT <<FK>>
+  id_parecer : INT <<FK>>
+}
+
+entity "notificacao" {
+  * id_notificacao : INT <<PK>>
+  --
+  mensagem : VARCHAR(45)
+  lida : TINYINT
+  data_criacao : DATETIME
+  --
+  id_servidor : INT <<FK>>
+  id_afastamento : INT <<FK>>
+}
+
+' ==========================================
+' RELACIONAMENTOS
+' ==========================================
+
+' Módulo: Estrutura Organizacional
+setor "1" -- "1..*" servidor : possui
+
+' Módulo: Requerimentos e Tipos
+tipo_requerimento "1" -- "1..*" requerimento : categoriza
+setor "1" -- "1..*" requerimento : responsavel_atual
+servidor "1" -- "1..*" requerimento : quem_digitou
+servidor "1" -- "1..*" requerimento : dono_pedido
+
+' Módulo: Tramitação
+requerimento "1" -- "1..*" tramitacao : possui_historico
+setor "1" -- "1..*" tramitacao : origem_tramitacao
+setor "1" -- "1..*" tramitacao : destino_tramitacao
+servidor "1" -- "1..*" tramitacao : movimenta
+
+' Módulo: Pareceres e Anexos
+requerimento "1" -- "1..*" parecer : recebe
+servidor "1" -- "1..*" parecer : emite
+requerimento "1" -- "1..*" anexo : contem
+parecer "1" -- "1..*" anexo : pode_ter
+
+' Módulo: Afastamentos e Notificações
+parecer "1" -- "1..*" afastamento : embasa
+servidor "1" -- "1..*" afastamento : usufrui
+afastamento "1" -- "1..*" notificacao : gera
+servidor "1" -- "1..*" notificacao : recebe
 
 @enduml
