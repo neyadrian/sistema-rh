@@ -1,27 +1,17 @@
 -- =============================================================================
--- SIGAPE - Banco de dados relacional (versão 6)
+-- SIGAPE - Banco de dados relacional (versão 7)
 -- SGBD: MySQL 8.0.16 ou superior (usa CHECK, colunas geradas, JSON, gatilhos e procedures)
--- Execução: mysql -u root -p < sigape_db_v6.sql   (o cliente mysql entende DELIMITER)
+-- Execução: mysql -u root -p < sigape_db_v7.sql   (o cliente mysql entende DELIMITER)
 --
 -- Criação do zero. Nomes de tabelas no plural, como na versão normalizada da equipe.
--- Em relação à versão da equipe:
---   * corrigidos os nomes que impediam a execução (vantagens, id_vinculo nos prazos e no gatilho);
---   * sem homologação: a licença nasce EM_ANDAMENTO (ou AGENDADA, se o início for futuro);
---   * prazo da licença de saúde livre (definido pela perícia); só os tipos de prazo fixo
+-- Ajustes contidos na v7:
+--   * Sem homologação: a licença nasce EM_ANDAMENTO (ou AGENDADA, se o início for futuro);
+--   * Prazo da licença de saúde livre (definido pela perícia); só os tipos de prazo fixo
 --     (maternidade, RN06) são validados contra prazos_licencas;
 --   * servidores.id_setor e unidades_exercicio.id_setor ficam coerentes por chave estrangeira composta;
---   * visibilidade do remetente: tabela mutável com quem escolheu manter o processo em leitura
---     (o setor pode remover da sua caixa quando quiser); a decisão também fica gravada, sem poder
---     mudar, em tramitacoes.manter_visivel;
---   * procedure tramitar_processo faz o envio inteiro de forma consistente (RN17) e
---     procedure remover_visibilidade_processo faz a remoção da caixa de acompanhamento;
---   * gatilho do documento assinado protege todos os campos e trata valores nulos;
---   * envios_emails não guarda mais o corpo do e-mail (evita guardar links de acesso);
---   * tabela verificacoes_documentos (RF31 e RF32) e visões das caixas do setor (RF28);
---   * v5: assinaturas saem de documentos e vão para assinaturas_documentos (uma linha por assinante,
---     imutável); procedure assinar_documento faz a assinatura inteira de forma consistente (RF22, RF23);
---   * v6: tramitacoes.despacho_encaminhamento removido (despacho é documento, com assinatura e número);
---     o envio aceita só uma observação curta (até 255 caracteres), gravada na descrição do andamento.
+--   * Tabela servidores_vantagens removida. O RH não mantém as vantagens prévias de cada servidor:
+--     ao cadastrar a licença, informa só as vantagens que deixam de ser pagas e o valor de cada uma
+--     (afastamentos_vantagens). A tabela vantagens continua como catálogo dos tipos de vantagem.
 -- =============================================================================
 
 CREATE DATABASE IF NOT EXISTS sigape_db
@@ -68,7 +58,7 @@ CREATE TABLE situacoes_servidores (
 CREATE TABLE cargos (
     id_cargo INT AUTO_INCREMENT PRIMARY KEY,
     nome VARCHAR(100) NOT NULL,
-    codigo_rh VARCHAR(20) NULL,                 -- código correspondente no RH 247
+    codigo_rh VARCHAR(20) NULL,                  -- código correspondente no RH 247
     descricao VARCHAR(255) NULL,
     ativo TINYINT(1) NOT NULL DEFAULT 1,
     UNIQUE KEY uq_cargo_nome (nome),
@@ -210,13 +200,13 @@ CREATE TABLE catalogos_assuntos (
 
 CREATE TABLE processos (
     id_processo INT AUTO_INCREMENT PRIMARY KEY,
-    numero_protocolo VARCHAR(50) NOT NULL,                 -- AAAA.SETOR.NNNN (RN16)
+    numero_protocolo VARCHAR(50) NOT NULL,                  -- AAAA.SETOR.NNNN (RN16)
     id_tipo_processo INT NOT NULL,
     id_assunto INT NOT NULL,
     servidor_interessado_id INT NOT NULL,
     usuario_abertura_id INT NOT NULL,
-    setor_origem_id INT NOT NULL,                          -- setor que abriu; entra no número
-    setor_atual_id INT NOT NULL,                           -- setor que detém a posse (RN17)
+    setor_origem_id INT NOT NULL,                           -- setor que abriu; entra no número
+    setor_atual_id INT NOT NULL,                            -- setor que detém a posse (RN17)
     descricao_justificativa TEXT NOT NULL,
     nivel_acesso ENUM('PUBLICO', 'PRIVADO') NOT NULL DEFAULT 'PUBLICO',
     status ENUM('EM_ANDAMENTO', 'CONCLUIDO', 'CANCELADO', 'ARQUIVADO') NOT NULL DEFAULT 'EM_ANDAMENTO',
@@ -253,14 +243,14 @@ CREATE TABLE documentos (
     numero_sequencial_processo INT UNSIGNED NOT NULL,      -- 1, 2, 3... (00001 na tela)
     numero_documento_oficial VARCHAR(50) NULL,
     titulo_ou_nome_arquivo VARCHAR(255) NOT NULL,
-    conteudo_texto LONGTEXT NULL,                        -- quando escrito no editor interno
+    conteudo_texto LONGTEXT NULL,                         -- quando escrito no editor interno
     caminho_storage VARCHAR(255) NULL,                     -- quando enviado como arquivo (guardado fora do banco)
     mime_type VARCHAR(100) NULL,
     tamanho_bytes INT UNSIGNED NULL,
     hash_sha256 CHAR(64) NULL,                             -- preenchido ao finalizar (RNF15)
     nivel_acesso ENUM('PUBLICO', 'PRIVADO') NOT NULL DEFAULT 'PUBLICO',
     status ENUM('RASCUNHO', 'FINALIZADO', 'ASSINADO', 'EXCLUIDO') NOT NULL DEFAULT 'FINALIZADO',  -- ASSINADO a partir da 1ª assinatura
-    id_documento_corrigido INT NULL,                       -- RN18: a correção é um novo documento
+    id_documento_corrigido INT NULL,                        -- RN18: a correção é um novo documento
     id_usuario_upload INT NOT NULL,
     data_criacao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_doc_numero_processo (id_processo, numero_sequencial_processo),
@@ -274,8 +264,6 @@ CREATE TABLE documentos (
 ) ENGINE=InnoDB;
 
 -- Assinaturas eletrônicas simples (RF22, Lei 14.063/2020). Um documento pode ter várias; cada linha é imutável.
--- A primeira assinatura congela o documento (status ASSINADO); as seguintes assinam o mesmo conteúdo,
--- o que o hash_sha256 de cada linha permite provar (RNF15).
 CREATE TABLE assinaturas_documentos (
     id_assinatura INT AUTO_INCREMENT PRIMARY KEY,
     id_documento INT NOT NULL,
@@ -292,7 +280,6 @@ CREATE TABLE assinaturas_documentos (
 ) ENGINE=InnoDB;
 
 -- Histórico imutável dos envios entre setores (RF25). manter_visivel guarda a escolha feita no envio.
--- O atraso do prazo é calculado nas visões, para a linha nunca precisar mudar.
 CREATE TABLE tramitacoes (
     id_tramitacao INT AUTO_INCREMENT PRIMARY KEY,
     id_processo INT NOT NULL,
@@ -313,9 +300,6 @@ CREATE TABLE tramitacoes (
 ) ENGINE=InnoDB;
 
 -- Visibilidade em leitura para o setor que enviou e escolheu manter o processo (RF25, RF26).
--- Tabela mutável: o setor pode remover o processo da sua caixa quando quiser (ativo = 0),
--- de preferência pela procedure remover_visibilidade_processo.
--- Quem tem a posse do processo está em processos.setor_atual_id, e não aqui.
 CREATE TABLE processos_setores_visibilidade (
     id_visibilidade INT AUTO_INCREMENT PRIMARY KEY,
     id_processo INT NOT NULL,
@@ -355,7 +339,7 @@ CREATE TABLE andamentos (
     CONSTRAINT fk_ands_tramitacao FOREIGN KEY (id_tramitacao) REFERENCES tramitacoes (id_tramitacao) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
--- Códigos de verificação dos PDFs exportados (RF31 e RF32). A página pública mostra só estes dados.
+-- Códigos de verificação dos PDFs exportados (RF31 e RF32).
 CREATE TABLE verificacoes_documentos (
     id_verificacao INT AUTO_INCREMENT PRIMARY KEY,
     codigo CHAR(32) NOT NULL,
@@ -376,6 +360,7 @@ CREATE TABLE verificacoes_documentos (
 -- 3. SIGAPE-AFASTAMENTOS
 -- -----------------------------------------------------------------------------
 
+-- Catálogo dos tipos de vantagem. O RH não guarda as vantagens prévias de cada servidor no sistema.
 CREATE TABLE vantagens (
     id_vantagem INT AUTO_INCREMENT PRIMARY KEY,
     nome_vantagem VARCHAR(100) NOT NULL,
@@ -383,19 +368,6 @@ CREATE TABLE vantagens (
     presencial_padrao TINYINT(1) NOT NULL DEFAULT 1,       -- vantagem ligada ao trabalho presencial (RN03)
     ativo TINYINT(1) NOT NULL DEFAULT 1,
     UNIQUE KEY uq_vantagem_nome (nome_vantagem)
-) ENGINE=InnoDB;
-
--- Vantagens ativas de cada servidor, vindas do arquivo do RH 247 (RF05); alimentam a lista do RF09
--- VERIFICAR COM O RH
-CREATE TABLE servidores_vantagens (
-    id_servidor_vantagem INT AUTO_INCREMENT PRIMARY KEY,
-    id_servidor INT NOT NULL,
-    id_vantagem INT NOT NULL,
-    valor DECIMAL(10,2) NOT NULL,
-    data_referencia DATE NULL,
-    UNIQUE KEY uq_servidor_vantagem (id_servidor, id_vantagem),
-    CONSTRAINT fk_sv_servidor FOREIGN KEY (id_servidor) REFERENCES servidores (id_servidor) ON DELETE RESTRICT,
-    CONSTRAINT fk_sv_vantagem FOREIGN KEY (id_vantagem) REFERENCES vantagens (id_vantagem) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
 CREATE TABLE importacoes (
@@ -444,24 +416,21 @@ CREATE TABLE prazos_licencas (
     CONSTRAINT fk_prazos_vinculo FOREIGN KEY (id_vinculo) REFERENCES vinculos (id_vinculo) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
--- Campo para marcar se já avisou ao servidor sobre o seu retorno / prorrogação...
 CREATE TABLE afastamentos (
     id_afastamento INT AUTO_INCREMENT PRIMARY KEY,
     id_servidor INT NOT NULL,
     id_tipo_licenca INT NOT NULL,
     data_inicio DATE NOT NULL,
     quantidade_dias SMALLINT UNSIGNED NOT NULL,
-    -- RN08: fim = início + dias - 1; retorno previsto = dia seguinte ao fim.
-    -- Se o RH decidir contar de outro modo (art. 212 do Estatuto), basta recriar estas duas colunas.
     data_fim DATE GENERATED ALWAYS AS (DATE_ADD(data_inicio, INTERVAL quantidade_dias - 1 DAY)) STORED,
     data_retorno_prevista DATE GENERATED ALWAYS AS (DATE_ADD(data_inicio, INTERVAL quantidade_dias DAY)) STORED,
     data_retorno_efetivo DATETIME NULL,                    -- RF13: data e hora do retorno confirmado
     id_usuario_retorno INT NULL,
-    motivo_observacao TEXT NULL,                           -- não registrar o nome da doença (Estatuto, art. 95)
-    id_processo_origem INT NULL,                           -- embasamento: processo ou requerimento
-    id_documento_laudo INT NULL,                           -- laudo ou atestado da perícia anexado (opcional)
+    motivo_observacao TEXT NULL,                            -- não registrar o nome da doença (Estatuto, art. 95)
+    id_processo_origem INT NULL,                            -- embasamento: processo ou requerimento
+    id_documento_laudo INT NULL,                            -- laudo ou atestado da perícia anexado (opcional)
     status ENUM('AGENDADA', 'EM_ANDAMENTO', 'ENCERRADO', 'PRORROGADO', 'CANCELADO')
-        NOT NULL DEFAULT 'EM_ANDAMENTO',                   -- AGENDADA: início futuro; a aplicação passa para EM_ANDAMENTO
+        NOT NULL DEFAULT 'EM_ANDAMENTO',                    -- AGENDADA: início futuro
     id_usuario_registro INT NOT NULL,
     id_afastamento_original INT NULL,                      -- prorrogação aponta para a licença original (RF14)
     data_registro DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -477,6 +446,8 @@ CREATE TABLE afastamentos (
     CONSTRAINT fk_afasts_original FOREIGN KEY (id_afastamento_original) REFERENCES afastamentos (id_afastamento) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
+-- Vantagens que deixam de ser pagas durante a licença (RF09). O RH escolhe o tipo e informa o valor na hora
+-- de cadastrar a licença; não há cadastro prévio das vantagens de cada servidor.
 CREATE TABLE afastamentos_vantagens (
     id_afastamento_vantagem INT AUTO_INCREMENT PRIMARY KEY,
     id_afastamento INT NOT NULL,
@@ -503,7 +474,6 @@ CREATE TABLE ordens_folhas (
     CONSTRAINT fk_ordens_usuario FOREIGN KEY (id_usuario_geracao) REFERENCES usuarios (id_usuario) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
--- tipo_notificacao e finalidade são VARCHAR para não limitar novos tipos; os valores vêm de constantes no código
 CREATE TABLE notificacoes (
     id_notificacao INT AUTO_INCREMENT PRIMARY KEY,
     id_usuario INT NOT NULL,
@@ -511,12 +481,10 @@ CREATE TABLE notificacoes (
     id_processo INT NULL,
     titulo VARCHAR(100) NOT NULL,
     mensagem VARCHAR(500) NOT NULL,
-    tipo_notificacao VARCHAR(50) NOT NULL DEFAULT 'GERAL',  -- ex.: ALERTA_TERMINO_LICENCA, PRAZO_PROCESSO_VENCIDO
+    tipo_notificacao VARCHAR(50) NOT NULL DEFAULT 'GERAL',
     lida TINYINT(1) NOT NULL DEFAULT 0,
     data_criacao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     data_leitura DATETIME NULL,
-    -- RF11: um único alerta por licença e por destinatário (a varredura diária pode repetir sem duplicar).
-    -- Com id_afastamento nulo (alertas de processo) o MySQL não aplica a unicidade: a aplicação deve conferir.
     UNIQUE KEY uq_alerta_unico (id_usuario, id_afastamento, tipo_notificacao),
     KEY idx_notif_usuario (id_usuario, lida),
     KEY idx_notif_tipo (tipo_notificacao),
@@ -525,8 +493,6 @@ CREATE TABLE notificacoes (
     CONSTRAINT fk_notifs_processo FOREIGN KEY (id_processo) REFERENCES processos (id_processo) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
--- Fila e controle de tentativas (RNF25). O corpo do e-mail NÃO é guardado: grava-se o modelo e os
--- parâmetros, sem links de acesso, para o banco não reter dados que dão acesso a contas.
 CREATE TABLE envios_emails (
     id_envio INT AUTO_INCREMENT PRIMARY KEY,
     id_notificacao INT NULL,
@@ -546,7 +512,6 @@ CREATE TABLE envios_emails (
 
 -- -----------------------------------------------------------------------------
 -- 4. AUDITORIA (RNF14)
--- hash_atual = SHA-256 do registro + hash_anterior (calculado pela aplicação)
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE logs_auditoria (
@@ -572,10 +537,6 @@ CREATE TABLE logs_auditoria (
 
 DELIMITER $$
 
--- Próximo número de uma sequência, seguro contra acessos simultâneos. Use dentro da transação que grava o registro.
---   processo:              CALL proximo_numero('PROCESSO', id_setor_origem, 0, YEAR(NOW()), @n)
---   parecer, laudo etc.:   CALL proximo_numero('DOC_OFICIAL', id_setor, id_tipo_documento, YEAR(NOW()), @n)
---   documento no processo: CALL proximo_numero('DOC_PROCESSO', 0, id_processo, 0, @n)
 CREATE PROCEDURE proximo_numero(
     IN p_escopo VARCHAR(30), IN p_setor INT, IN p_ref INT, IN p_ano SMALLINT, OUT p_numero INT UNSIGNED)
 BEGIN
@@ -589,11 +550,6 @@ BEGIN
     END IF;
 END$$
 
--- Envia o processo a outro setor (RF25, RN17). Chame dentro de START TRANSACTION ... COMMIT.
--- Confere tudo antes de gravar; depois troca a posse, grava a tramitação e o andamento e,
--- se o remetente escolheu manter o processo visível, cria ou reativa a linha em processos_setores_visibilidade.
--- p_observacao é opcional (até 255 caracteres) e vai na descrição do evento do andamento; não é despacho.
--- Não deve levar dado de saúde (RN24). Qualquer ato oficial vai em documento do tipo Despacho.
 CREATE PROCEDURE tramitar_processo(
     IN p_id_processo INT, IN p_id_usuario INT, IN p_setor_destino INT,
     IN p_observacao TEXT, IN p_manter_visivel TINYINT, IN p_prazo_retorno DATE)
@@ -662,9 +618,6 @@ BEGIN
     END IF;
 END$$
 
--- O setor do usuário remove da sua caixa de acompanhamento um processo que escolheu manter (RF26).
--- A linha não é apagada: fica com ativo = 0 e registra quem removeu e quando.
--- Se o setor enviar o processo de novo e marcar "manter", a tramitar_processo reativa a linha.
 CREATE PROCEDURE remover_visibilidade_processo(IN p_id_processo INT, IN p_id_usuario INT)
 BEGIN
     DECLARE v_setor_usuario INT;
@@ -690,12 +643,6 @@ BEGIN
      WHERE id_visibilidade = v_id_visibilidade;
 END$$
 
--- Assina o documento em nome do usuário (RF22, RF23, RN18, RN19). Chame dentro de START TRANSACTION ... COMMIT.
--- A aplicação confere antes a nova digitação da senha (RF22.1) e a competência do papel para o tipo de
--- documento (RN19, ex.: parecer só por gestor da PGM) e monta p_dados_carimbo (nome, matrícula, cargo, setor).
--- A procedure confere o que é do banco: documento finalizado e com hash, processo em andamento,
--- usuário ativo e do setor que detém a posse, e uma assinatura por usuário. Na primeira assinatura
--- o documento passa a ASSINADO e, se o tipo gera numeração oficial, recebe TIPO-SETOR-NNNN/AAAA.
 CREATE PROCEDURE assinar_documento(
     IN p_id_documento INT, IN p_id_usuario INT, IN p_dados_carimbo JSON)
 BEGIN
@@ -759,7 +706,6 @@ BEGIN
     INSERT INTO assinaturas_documentos (id_documento, id_usuario, id_setor, hash_sha256, dados_carimbo)
     VALUES (p_id_documento, p_id_usuario, v_setor_usuario, v_hash, p_dados_carimbo);
 
-    -- Primeira assinatura: congela o documento e, se for o caso, numera (RF23)
     IF v_status = 'FINALIZADO' THEN
         SELECT gera_numeracao_oficial, sigla_documento INTO v_gera, v_sigla_doc
           FROM tipos_documentos WHERE id_tipo_documento = v_id_tipo;
@@ -808,20 +754,17 @@ JOIN processos p ON p.id_processo = t.id_processo AND p.status = 'EM_ANDAMENTO'
 WHERE t.id_tramitacao = (SELECT MAX(t2.id_tramitacao) FROM tramitacoes t2 WHERE t2.id_processo = t.id_processo);
 
 -- Caixas do setor (RF28). Filtre por id_setor_caixa.
--- Entrada: processos em andamento que estão com o setor
 CREATE VIEW vw_caixa_entrada AS
 SELECT p.*, p.setor_atual_id AS id_setor_caixa
 FROM processos p
 WHERE p.status = 'EM_ANDAMENTO';
 
--- Acompanhamento: processos que o setor enviou, escolheu manter e não removeu, ainda em andamento
 CREATE VIEW vw_caixa_acompanhamento AS
 SELECT p.*, v.id_setor AS id_setor_caixa
 FROM processos_setores_visibilidade v
 JOIN processos p ON p.id_processo = v.id_processo
 WHERE v.ativo = 1 AND p.status = 'EM_ANDAMENTO' AND p.setor_atual_id <> v.id_setor;
 
--- Todos do setor: tudo o que o setor abriu, recebeu ou enviou, com qualquer status
 CREATE VIEW vw_processos_do_setor AS
 SELECT p.*, p.setor_origem_id AS id_setor_caixa FROM processos p
 UNION
@@ -837,10 +780,6 @@ SELECT p.*, t.setor_destino_id FROM processos p JOIN tramitacoes t ON t.id_proce
 
 DELIMITER $$
 
--- RN25, RN06, RN10: licença só para servidor validado, de vínculo e situação que permitem,
--- com prazo permitido (tipos de prazo fixo) e sem sobreposição de período.
--- Observação: duas gravações simultâneas para o mesmo servidor podem passar pela conferência de
--- sobreposição; a aplicação deve gravar a licença dentro de uma transação que trave a linha do servidor.
 CREATE TRIGGER trg_afastamento_regras BEFORE INSERT ON afastamentos
 FOR EACH ROW
 BEGIN
@@ -896,8 +835,6 @@ BEGIN
     END IF;
 END$$
 
--- RN18: documento assinado não muda. A comparação <=> trata valores nulos (arquivo sem texto, por exemplo).
--- Só o nível de acesso pode ser ajustado depois da assinatura.
 CREATE TRIGGER trg_documento_no_update BEFORE UPDATE ON documentos
 FOR EACH ROW
 BEGIN
@@ -974,7 +911,6 @@ BEGIN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'RNF14: o log de auditoria nao pode ser excluido';
 END$$
 
--- RNF23: sem exclusão física dos registros que formam o histórico do servidor
 CREATE TRIGGER trg_servidor_no_delete BEFORE DELETE ON servidores
 FOR EACH ROW
 BEGIN
@@ -996,7 +932,7 @@ END$$
 DELIMITER ;
 
 -- -----------------------------------------------------------------------------
--- 7. DADOS INICIAIS (parâmetros e catálogos; nenhum dado real de servidor)
+-- 7. DADOS INICIAIS
 -- -----------------------------------------------------------------------------
 
 INSERT INTO parametros (chave, valor, descricao) VALUES
@@ -1013,7 +949,6 @@ INSERT INTO setores (codigo, nome, sigla) VALUES
 (300, 'Secretaria de Educação', 'SEDUC'),
 (400, 'Secretaria de Saúde / Perícia Médica', 'SESA');
 
--- Vínculos do portal da transparência; apague os que não forem necessários
 INSERT INTO vinculos (nome, permite_licenca) VALUES
 ('COMISSIONADO', 1),
 ('CONTR. TEMPORARIO', 1),
@@ -1027,7 +962,6 @@ INSERT INTO situacoes_servidores (nome, descricao, permite_login, permite_afasta
 ('ATIVO', 'Servidor em pleno exercício das suas funções', 1, 1),
 ('INATIVO', 'Servidor inativo (aposentado, desligado ou suspenso)', 0, 0);
 
--- Tipo 'Requerimento', concluído no RH (RF33, RN22)
 INSERT INTO tipos_processos (nome, descricao)
 VALUES ('Requerimento', 'Requerimentos administrativos dos servidores');
 SET @id_requerimento = LAST_INSERT_ID();
@@ -1035,8 +969,6 @@ SET @id_requerimento = LAST_INSERT_ID();
 INSERT INTO tipos_processos_setores_conclusao (id_tipo_processo, id_setor)
 SELECT @id_requerimento, id_setor FROM setores WHERE sigla = 'RH';
 
--- Assuntos do Formulário Padrão de Requerimento (RF19). O prazo de 15 dias é provisório: definir com o cliente
--- (o Estatuto, art. 130, parágrafo único, fala em 5 dias para despacho e 30 para decisão).
 INSERT INTO catalogos_assuntos (id_tipo_processo, descricao, prazo_dias_padrao) VALUES
 (@id_requerimento, 'ADICIONAL DE INSALUBRIDADE OU PERICULOSIDADE', 15),
 (@id_requerimento, 'ADICIONAL NOTURNO', 15),
@@ -1066,7 +998,6 @@ INSERT INTO catalogos_assuntos (id_tipo_processo, descricao, prazo_dias_padrao) 
 (@id_requerimento, 'REMOÇÃO A PEDIDO', 15),
 (@id_requerimento, 'VACÂNCIA', 15),
 (@id_requerimento, 'OUTROS', 15),
--- assunto dos wireframes que não consta no formulário (casos que chegam da perícia)
 (@id_requerimento, 'AFASTAMENTO POR MOTIVO DE SAÚDE', 15);
 
 INSERT INTO tipos_documentos (nome, gera_numeracao_oficial, sigla_documento, nivel_acesso_padrao) VALUES
@@ -1076,22 +1007,17 @@ INSERT INTO tipos_documentos (nome, gera_numeracao_oficial, sigla_documento, niv
 ('Exame Médico Pericial (Laudo)', 1, 'LAUDO', 'PRIVADO'),
 ('Despacho', 1, 'DESPACHO', 'PUBLICO');
 
--- Lista inicial das vantagens presenciais (RN03), a confirmar com o RH e a lei específica de cada uma
 INSERT INTO vantagens (nome_vantagem, descricao) VALUES
 ('Adicional de Insalubridade', 'Devido pelo exercício habitual em local insalubre'),
 ('Adicional de Periculosidade', 'Devido pelo exercício habitual em condições perigosas'),
 ('Adicional Noturno', 'Devido pelo serviço noturno prestado'),
-('Ajuda de Custo', 'Paga a quem trabalha presencialmente (não é a ajuda de custo de instalação do art. 64 do Estatuto)'),
+('Ajuda de Custo', 'Paga a quem trabalha presencialmente'),
 ('Auxílio Transporte', 'Despesas de transporte para o trabalho presencial');
 
--- Saúde: prazo livre, definido pela perícia. Maternidade: prazos fixos por vínculo; suspensão de vantagens a definir.
 INSERT INTO tipos_licencas (nome, prazo_fixo, suspende_vantagens) VALUES
 ('Licença para tratamento de saúde', 0, 1),
 ('Licença-maternidade', 1, 0);
 
--- Maternidade (RN06): 180 dias para os vínculos estatutários e 120 para comissionados e contratados.
--- Atenção: o Estatuto (art. 111) prevê 120 dias; os 180 dependem de lei municipal ainda a localizar.
--- Cedidos e pensionistas ficam sem prazo: o gatilho recusa maternidade para eles.
 INSERT INTO prazos_licencas (id_tipo_licenca, id_vinculo, dias, descricao_opcao)
 SELECT t.id_tipo_licenca, v.id_vinculo, x.dias, CONCAT(x.dias, ' dias')
   FROM tipos_licencas t
@@ -1101,14 +1027,3 @@ SELECT t.id_tipo_licenca, v.id_vinculo, x.dias, CONCAT(x.dias, ' dias')
         UNION ALL SELECT 'CONTR. TEMPORARIO', 120) x
   JOIN vinculos v ON v.nome = x.nome
  WHERE t.nome = 'Licença-maternidade';
-
--- -----------------------------------------------------------------------------
--- 8. USUÁRIO DA APLICAÇÃO (modelo; troque a senha e o servidor antes de usar)
--- A aplicação não precisa de DELETE. Os gatilhos da seção 6 já bloqueiam UPDATE e DELETE nas tabelas imutáveis.
--- -----------------------------------------------------------------------------
--- CREATE USER 'sigape_app'@'localhost' IDENTIFIED BY '<senha-forte>';
--- GRANT SELECT, INSERT, UPDATE ON sigape_db.* TO 'sigape_app'@'localhost';
--- GRANT EXECUTE ON PROCEDURE sigape_db.proximo_numero TO 'sigape_app'@'localhost';
--- GRANT EXECUTE ON PROCEDURE sigape_db.tramitar_processo TO 'sigape_app'@'localhost';
--- GRANT EXECUTE ON PROCEDURE sigape_db.remover_visibilidade_processo TO 'sigape_app'@'localhost';
--- GRANT EXECUTE ON PROCEDURE sigape_db.assinar_documento TO 'sigape_app'@'localhost';
