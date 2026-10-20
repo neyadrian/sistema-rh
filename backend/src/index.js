@@ -1,41 +1,25 @@
-const express = require('express');
-const cors = require('cors');
-const jwt = require('jsonwebtoken');
-require('dotenv').config();
+require("dotenv").config();   //1: carrega o .env antes de tudo
 
-const authMiddleware = require('./middlewares/authMiddleware');
-const checkRole = require('./middlewares/rbacMiddleware');
+const express = require("express");
+const cors = require("cors");
+const db = require("./db/db");
 
 const app = express();
-app.use(express.json());
-app.use(cors());
 
-// Rota pública de login (exemplo de geração do token)
-app.post('/login', (req, res) => {
-  const { email, senha } = req.body;
+app.use(cors());    //perite o front chamar a API
+app.use(express.json());  //convete o body JSON em req.body (@RequestBody)
 
-  // após validar a senha com bcrypt no banco:
-  const usuarioFicticio = {
-    id: 1,
-    nome: 'Ney',
-    papel: 'RH', // Pode ser 'RH', 'PGM', 'SEDUC', 'SESA', etc.
-    setor: 'RH'
-  };
-
-  const token = jwt.sign(usuarioFicticio, process.env.JWT_SECRET, { expiresIn: '8h' });
-
-  return res.json({ token });
-});
-
-// Rota protegida: Exige apenas token JWT válido
-app.get('/perfil', authMiddleware, (req, res) => {
-  res.json({ mensagem: 'Dados do perfil', usuario: req.user });
-});
-
-// Rota protegida por RBAC: Exige JWT e papel 'RH' ou 'ADMIN'
-app.get('/rh/servidores', authMiddleware, checkRole(['RH', 'ADMIN']), (req, res) => {
-  res.json({ mensagem: 'Acesso concedido aos dados do RH.' });
+app.get("/health", async (req, res) => {
+  try{
+    const [rows] = await db.query("SELECT 1 + 1 AS resultado");   
+    res.json({ status: "ok", banco: rows[0].resultado });
+  } catch (err) {
+    console.error(err);   //mostra o erro no terminal
+    res.status(500).json({ status: "erro", mensagem: err.message });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
+});
