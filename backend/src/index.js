@@ -1,14 +1,17 @@
 require("dotenv").config();   // 1º: carrega o .env antes de tudo
 
 const express = require("express");
+const app = express();
 const cors = require("cors");
 const db = require("./db/db");
-const setoresRoutes = require("./routes/setores.routes");
 
-const app = express();
+const processoRoutes = require("./routes/processoRoutes");
+const setoresRoutes = require("./routes/setoresRoutes");
 
-app.use(cors());           // permite o front chamar a API
-app.use(express.json());   // converte o body JSON em req.body (@RequestBody)
+app.use(cors());
+
+app.use(processoRoutes);
+app.use(setoresRoutes);
 
 app.get("/health", async (req, res) => {
   try {
