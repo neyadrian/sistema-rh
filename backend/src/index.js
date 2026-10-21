@@ -4,6 +4,9 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 const db = require("./db/db");
+const swaggerUi = require("swagger-ui-express");
+const YAML = require("yamljs");
+const path = require("path");
 
 const processoRoutes = require("./routes/processoRoutes");
 const setoresRoutes = require("./routes/setoresRoutes");
@@ -12,7 +15,7 @@ app.use(cors());
 
 app.use(processoRoutes);
 app.use(setoresRoutes);
-
+  
 app.get("/health", async (req, res) => {
   try {
     const [rows] = await db.query("SELECT 1 + 1 AS resultado");
@@ -24,6 +27,9 @@ app.get("/health", async (req, res) => {
 });
 
 app.use("/setores", setoresRoutes);
+
+const openapiDoc = YAML.load(path.join(__dirname, "../docs/openapi.yaml"));
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiDoc));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
