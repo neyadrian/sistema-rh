@@ -7,8 +7,7 @@ const db = require("./db/db");
 const swaggerUi = require("swagger-ui-express");
 const YAML = require("yamljs");
 const path = require("path");
-const express = require('express');
-const authRoutes = require('./routes/auth.routes');
+const authRoutes = require('./routes/authRoutes');
 
 const processoRoutes = require("./routes/processoRoutes");
 const setoresRoutes = require("./routes/setoresRoutes");
