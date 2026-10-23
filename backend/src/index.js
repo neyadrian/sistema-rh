@@ -10,13 +10,17 @@ const path = require("path");
 const authRoutes = require('./routes/authRoutes');
 
 const processoRoutes = require("./routes/processoRoutes");
+const tramitacaoRoutes = require("./routes/tramitacaoRoutes");
 const setoresRoutes = require("./routes/setoresRoutes");
 
 app.use(cors());
 
-app.use(processoRoutes);
-app.use(setoresRoutes);
 app.use(express.json());
+
+app.use(processoRoutes);
+app.use(tramitacaoRoutes);
+app.use(setoresRoutes);
+app.use(authRoutes);
   
 app.get("/health", async (req, res) => {
   try {

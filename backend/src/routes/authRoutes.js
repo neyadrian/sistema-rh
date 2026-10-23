@@ -1,4 +1,5 @@
 const { Router } = require("express");
+const bcrypt = require("bcrypt");
 const db = require("../db/db");
 
 const router = Router();
@@ -28,7 +29,12 @@ router.post("/login", async (req, res) => {
 
     const u = rows[0];
 
-    // provisório: ainda não comparamos a senha (próximo passo)
+    const ok = await bcrypt.compare(senha, u.senha_hash);
+
+    if (!ok) {
+      return res.status(401).json({ mensagem: "Matrícula ou senha inválidos." });
+    }
+
     return res.json({
       usuario: { id_usuario: u.id_usuario, nome: u.nome, perfil: u.perfil, setor: u.setor },
     });
