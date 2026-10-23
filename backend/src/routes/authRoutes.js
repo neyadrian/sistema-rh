@@ -15,6 +15,7 @@ router.post("/login", async (req, res) => {
     const sql = `
       SELECT u.id_usuario, u.senha_hash, u.perfil, u.ativo,
              u.tentativas_falhas, u.bloqueado_ate,
+             (u.bloqueado_ate IS NOT NULL AND u.bloqueado_ate > NOW()) AS bloqueado,
              s.nome, st.sigla AS setor
       FROM servidores s
       JOIN usuarios u ON u.id_servidor = s.id_servidor
@@ -29,11 +30,29 @@ router.post("/login", async (req, res) => {
 
     const u = rows[0];
 
+    if (u.bloqueado) {
+      return res.status(401).json({ mensagem: "Matrícula ou senha inválidos." });
+    }
+
     const ok = await bcrypt.compare(senha, u.senha_hash);
 
     if (!ok) {
+      await db.query(
+        `UPDATE usuarios
+            SET bloqueado_ate = IF(tentativas_falhas + 1 >= 5, DATE_ADD(NOW(), INTERVAL 15 MINUTE), bloqueado_ate),
+                tentativas_falhas = tentativas_falhas + 1
+          WHERE id_usuario = ?`,
+        [u.id_usuario]
+      );
       return res.status(401).json({ mensagem: "Matrícula ou senha inválidos." });
     }
+
+    await db.query(
+      `UPDATE usuarios
+          SET tentativas_falhas = 0, bloqueado_ate = NULL, data_ultimo_acesso = NOW()
+        WHERE id_usuario = ?`,
+      [u.id_usuario]
+    );
 
     return res.json({
       usuario: { id_usuario: u.id_usuario, nome: u.nome, perfil: u.perfil, setor: u.setor },
